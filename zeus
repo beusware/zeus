@@ -1,0 +1,157 @@
+#!/bin/bash
+
+# A bash script to help manage the beusware project
+# Depends on: bash, xargs, git, sysstat, pgrep
+# By David Penkowoj, 2021/05/22
+
+# This script uses non-standard exit codes:
+# 3  System error / IO error
+# 2  Script error
+# 1  User error
+# 0  No error
+
+# Setting relevant variables
+DEFAULT_PROJECT_DIR="$HOME/"
+PROJECT_SERVER="https://github.com/beusware/"
+
+# Setting helper functions
+function printred {
+  printf "\033[0;31m$1\033[0m"
+}
+
+function printyellow {
+  printf "\033[0;33m$1\033[0m"
+}
+
+function printblue {
+  printf "\033[0;34m$1\033[0m"
+}
+
+function confirm {
+  read -r -p "Terminate? [y/N] " RESPONSE
+  if [[ "$RESPONSE" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    handleKill "$1"
+  fi
+}
+
+# Setting handler functions
+function handleUpdate {
+  printf "Checking for running services …\n" && sleep 0.2
+
+  RUNNING="$(pgrep -l screen)"
+  if [ -z "$RUNNING" ]; then
+    printblue "[ Result ] No running services found.\n"
+  else 
+    echo "$RUNNING" | while read -r LINE; do
+      PID="$(echo "$LINE" | awk '{print $1}')" 
+      NAME="$(echo "$LINE" | awk '{print $2}')"
+      printblue "Found running service $NAME ($PID)" && confirm "$PID"
+    done
+
+    RUNNING="$(pgrep -l screen)"
+    [[ ! (-z "$RUNNING") ]] && printyellow "[ Warning ] One or more services remain running. This may cause undefined behavior.\n"
+  fi
+
+  printf "Starting update …\n" && sleep 0.2
+
+  cd "$DEFAULT_PROJECT_DIR" || printred "[ Error ] Update failed\n" && exit 3
+  echo "$@" | sed -e 's/\ /\n/g' | awk '{print "'$PROJECT_SERVER'" $1}' | xargs -L 1 git clone 
+
+  handleStart "$@"
+}
+
+function handleRestart {
+  printred "[ Error ] Function not yet implemented\n" && exit 2
+
+  # printf "Restarting the following services: %s\n" "$@"
+  # handleKill
+  # handleStart
+}
+
+function handleStart {
+  # screen -d -m SERVICE &
+  printred "[ Error ] Function not yet implemented\n" && exit 2
+}
+
+function handleKill {
+  ### TODO: CHECK IF THIS IS A NAME OR PID
+  [[ -z "$1" ]] && printred "[ Error ] Not enought arguments\n" && exit 1
+
+  kill "$1" && 
+  printblue "Terminated service with ID $1\n" && sleep 0.2 || 
+  printred "[ Error ] Failed to terminate proccess with ID $1\n" && exit 3
+}
+
+function handleHelp {
+  printf "General usage: zeus [command] [options]\n"
+  printf "\n"
+  printf "To manage the currently installed beusware:\n"
+  printf "   update      downloads and upgrades to the latest changes from the repositories\n"
+  printf "   restart     restarts specified services, defaults to all\n"
+  printf "   start       starts specified services, defaults to all\n"
+  printf "   kill        kills specified services, defaults to all\n"
+  printf "   help        shows this\n"
+  printf "\n"
+  printf "To analyze the system:\n"
+  printf "   anal        returns current state of cpu, memory and disk usage\n"
+  printf "   log         show the last 11 log lines of every service\n"
+}
+
+function handleAnal {
+  CPU="$(mpstat | awk '$12 ~ /[0-9.]+/ { print 100 - $12"%" }')"
+  RAM="$(free -h | awk '/^Mem:/ {printf("%d%",$3 / $2 * 100)}')"
+  DISK="$(df -h / | awk '/^\// {print $5}')"
+
+  printf "CPU:   %s\nRAM:   %s\nDISK:  %s\n" "$CPU" "$RAM" "$DISK"
+}
+
+function handleLog {
+  printred "[ Error ] Function not yet implemented\n" && exit 2
+}
+
+# Check for insufficient arguments error
+[[ -z "$1" ]] && printred "[ Error ] Not enough aruments!\n\n" && handleHelp && exit 1
+
+# Handle commands
+case "$1" in
+  help)
+    shift
+    handleHelp && exit 0
+    ;;
+
+  update)
+    shift
+    handleUpdate "$@"
+    ;;
+
+  restart)
+    shift
+    handleRestart "$@"
+    ;;
+
+  start)
+    shift
+    handleStart "$@"
+    ;;
+
+  kill)
+    shift
+    handleKill "$@"
+    ;;
+
+  anal)
+    shift
+    handleAnal "$@"
+    ;;
+
+  log)
+    shift
+    handleLog "$@"
+    ;;
+
+  *)
+    printred "[ Error ] Unknown command\n\n" && handleHelp && exit 1
+    ;;
+esac
+
+exit 0
